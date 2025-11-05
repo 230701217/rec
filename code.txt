@@ -1,37 +1,257 @@
-import React, { useState } from 'react';
+📄 models/petModel.js
+const mongoose = require('mongoose');
 
-const App = () => {
-  const [searchTerm, setSearchTerm] = useState('');
+const petSchema = new mongoose.Schema({
+  petName: { type: String, required: true },
+  species: {
+    type: String,
+    required: true,
+    enum: ['Dog', 'Cat', 'Bird', 'Fish', 'Rabbit', 'Hamster', 'Other']
+  },
+  breed: { type: String, required: true },
+  age: { type: Number, required: true, min: 0, max: 50 },
+  weight: { type: Number, required: true, min: 0.1 },
+  gender: { type: String, required: true },
+  color: { type: String, required: true },
+  medicalHistory: { type: String },
+  vaccinations: [{ type: String }],
+  allergies: [{ type: String }],
+  isActive: { type: Boolean, default: true }
+});
 
-  const employees = [
-    { id: 1, name: 'John Doe' },
-    { id: 2, name: 'Jane Smith' },
-    { id: 3, name: 'Mike Johnson' },
-    { id: 4, name: 'James Brown' },
-  ];
+module.exports = mongoose.model('Pet', petSchema);
 
-  const filteredEmployees = employees.filter((emp) =>
-    emp.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+📄 controllers/petController.js
+const Pet = require('../models/petModel');
+
+// GET all pets
+const getAllPets = async (req, res) => {
+  try {
+    const { sortOrder = 1 } = req.body;
+    const pets = await Pet.find().sort({ petName: sortOrder });
+    res.status(200).json(pets);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// ADD a pet
+const addPet = async (req, res) => {
+  try {
+    await Pet.create(req.body);
+    res.status(200).json({ message: 'Pet Added Successfully' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+module.exports = { getAllPets, addPet };
+
+📄 routes/petRoutes.js
+const express = require('express');
+const router = express.Router();
+const { getAllPets, addPet } = require('../controllers/petController');
+
+router.get('/pets', getAllPets);
+router.post('/pets', addPet);
+
+module.exports = router;
+
+📄 index.js (backend root)
+const express = require('express');
+const mongoose = require('mongoose');
+const cors = require('cors');
+const petRoutes = require('./routes/petRoutes');
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+app.use('/api', petRoutes);
+
+mongoose.connect('mongodb://127.0.0.1:27017/pettrack')
+  .then(() => {
+    console.log('MongoDB connected');
+    app.listen(8080, () => console.log('Server running on port 8080'));
+  })
+  .catch(err => console.error('DB connection failed', err));
+
+🎨 Frontend (React + Bootstrap)
+📄 src/apiConfig.js
+const API_BASE_URL = "http://localhost:8080/api";
+export default API_BASE_URL;
+
+📄 src/Components/Header.jsx
+import React from 'react';
+import { Link } from 'react-router-dom';
+
+const Header = () => (
+  <nav className="navbar navbar-expand-lg navbar-dark bg-dark">
+    <div className="container-fluid">
+      <h1 className="navbar-brand">PetTrack</h1>
+      <div className="navbar-nav">
+        <Link className="nav-link" to="/">Home</Link>
+        <Link className="nav-link" to="/view">View Pets</Link>
+        <Link className="nav-link" to="/add">Add Pet</Link>
+      </div>
+    </div>
+  </nav>
+);
+
+export default Header;
+
+📄 src/Components/Home.jsx
+import React from 'react';
+
+const Home = () => (
+  <div className="text-center mt-5">
+    <h1>Welcome to PetTrack</h1>
+    <p>Manage your beloved pets easily</p>
+  </div>
+);
+
+export default Home;
+
+📄 src/Components/ErrorPage.jsx
+import React from 'react';
+
+const ErrorPage = () => (
+  <div className="text-center mt-5">
+    <h2>Something Went Wrong</h2>
+    <p>We're sorry, but an error occurred. Please try again later.</p>
+  </div>
+);
+
+export default ErrorPage;
+
+📄 src/View/DisplayPets.jsx
+import React, { useEffect, useState } from 'react';
+import axios from 'axios';
+import API_BASE_URL from '../apiConfig';
+
+const DisplayPets = () => {
+  const [pets, setPets] = useState([]);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    axios.get(`${API_BASE_URL}/pets`)
+      .then(res => setPets(res.data))
+      .catch(() => setError('Error loading pets'));
+  }, []);
+
+  if (error) return <p>{error}</p>;
 
   return (
-    <div>
-      <h1>Employee Directory</h1>
-
-      <input
-        type="text"
-        placeholder="Search employees..."
-        value={searchTerm}
-        onChange={(e) => setSearchTerm(e.target.value)}
-      />
-
-      <ul>
-        {filteredEmployees.map((emp) => (
-          <li key={emp.id}>{emp.name}</li>
-        ))}
-      </ul>
+    <div className="container mt-5">
+      <h1>Pet Catalog</h1>
+      {pets.length === 0 ? (
+        <p>No pets found</p>
+      ) : (
+        <div className="row">
+          {pets.map(pet => (
+            <div key={pet._id} className="col-md-4">
+              <div className="card mt-3">
+                <div className="card-body">
+                  <h5>{pet.petName}</h5>
+                  <p>{pet.species} - {pet.breed}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
 
-export default App;
+export default DisplayPets;
+
+📄 src/Add/CreatePet.jsx
+import React, { useState } from 'react';
+import axios from 'axios';
+import API_BASE_URL from '../apiConfig';
+
+const CreatePet = () => {
+  const [formData, setFormData] = useState({
+    petName: '',
+    species: '',
+    breed: '',
+    age: '',
+    weight: '',
+    gender: '',
+    color: '',
+    medicalHistory: '',
+    vaccinations: '',
+    allergies: '',
+    isActive: true
+  });
+
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await axios.post(`${API_BASE_URL}/pets`, {
+        ...formData,
+        age: Number(formData.age),
+        weight: Number(formData.weight),
+        vaccinations: formData.vaccinations.split(',').map(v => v.trim()).filter(Boolean),
+        allergies: formData.allergies.split(',').map(a => a.trim()).filter(Boolean)
+      });
+      alert('Pet Added Successfully');
+    } catch {
+      alert('Error adding pet');
+    }
+  };
+
+  return (
+    <div className="container mt-5">
+      <h1>Add Pet</h1>
+      <form onSubmit={handleSubmit}>
+        <label>Pet Name:</label>
+        <input name="petName" value={formData.petName} onChange={handleChange} className="form-control" />
+
+        <label>Species:</label>
+        <input name="species" value={formData.species} onChange={handleChange} className="form-control" />
+
+        <label>Breed:</label>
+        <input name="breed" value={formData.breed} onChange={handleChange} className="form-control" />
+
+        <label>Age (years):</label>
+        <input name="age" type="number" value={formData.age} onChange={handleChange} className="form-control" />
+
+        <label>Weight (kg):</label>
+        <input name="weight" type="number" value={formData.weight} onChange={handleChange} className="form-control" />
+
+        <label>Gender:</label>
+        <input name="gender" value={formData.gender} onChange={handleChange} className="form-control" />
+
+        <label>Color:</label>
+        <input name="color" value={formData.color} onChange={handleChange} className="form-control" />
+
+        <label>Medical History:</label>
+        <textarea name="medicalHistory" value={formData.medicalHistory} onChange={handleChange} className="form-control" />
+
+        <label>Vaccinations (comma-separated):</label>
+        <input name="vaccinations" value={formData.vaccinations} onChange={handleChange} className="form-control" />
+
+        <label>Allergies (comma-separated):</label>
+        <input name="allergies" value={formData.allergies} onChange={handleChange} className="form-control" />
+
+        <div className="form-check mt-3">
+          <input className="form-check-input" type="checkbox" name="isActive" checked={formData.isActive} onChange={handleChange} />
+          <label className="form-check-label">Active</label>
+        </div>
+
+        <button type="submit" className="btn btn-primary mt-3">Add Pet</button>
+      </form>
+    </div>
+  );
+};
+
+export default CreatePet;
